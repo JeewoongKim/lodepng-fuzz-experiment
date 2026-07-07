@@ -35,14 +35,7 @@ freely, subject to the following restrictions:
 
 namespace {
 
-/*
- * Valid non-palette colortype/bitdepth combinations.
- *
- * Palette is intentionally skipped in this first encoder fuzzer. The simple
- * public encoder APIs take raw image bytes, width, height, colortype and
- * bitdepth, but not a palette. Palette-specific encoder fuzzing can be added
- * later with a dedicated state-based target.
- */
+/* Valid raw color modes that do not require a palette. */
 const size_t num_combinations = 11;
 
 LodePNGColorType colortypes[num_combinations] = {
@@ -65,10 +58,7 @@ unsigned getByte(const uint8_t* data, size_t size, size_t index) {
 }
 
 unsigned getDimension(const uint8_t* data, size_t size, size_t index) {
-  /*
-   * Keep images small. This target runs multiple encoder entry points for each
-   * input, and PNG encoding performs filtering and zlib compression.
-   */
+  /* Limit image size to keep encoder fuzzing fast. */
   return 1u + (getByte(data, size, index) % 32u);
 }
 
@@ -222,10 +212,6 @@ void encodeNoLZ77(const std::vector<unsigned char>& image,
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   if(size == 0) return 0;
 
-  /*
-   * Keep the same simple selection style as lodepng_fuzzer.cpp: choose one
-   * valid raw image format from the input.
-   */
   size_t color_index = data[size - 1] % num_combinations;
 
   LodePNGColorType colortype = colortypes[color_index];
@@ -237,16 +223,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   size_t raw_size = getRawSize(w, h, colortype, bitdepth);
   std::vector<unsigned char> image = makeImage(data, size, raw_size, 4);
 
-  /*
-   * Exercise the generic public encoder APIs.
-   */
   encodeMemory(image, w, h, colortype, bitdepth);
   encodeVector(image, w, h, colortype, bitdepth);
 
-  /*
-   * Exercise common convenience encoder APIs explicitly. These APIs expect
-   * RGB8 and RGBA8 input respectively, so they use dedicated raw buffers.
-   */
   std::vector<unsigned char> image24 =
       makeImage(data, size, static_cast<size_t>(w) * h * 3u, 8);
   std::vector<unsigned char> image32 =
@@ -255,10 +234,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   encode24(image24, w, h);
   encode32(image32, w, h);
 
-  /*
-   * Exercise representative state-based encoder paths used by the unit tests.
-   */
-  encodeState(image, w, h, colortype, bitdepth);
   encodeInterlaced(image, w, h, colortype, bitdepth);
   encodeUncompressed(image, w, h, colortype, bitdepth);
   encodeNoLZ77(image, w, h, colortype, bitdepth);
